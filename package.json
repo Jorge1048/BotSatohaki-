@@ -1,0 +1,14 @@
+{
+  "name": "BotSatohaki",
+  "version": "1.0.0",
+  "description": "Bot simple de WhatsApp con comandos básicos",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.5.0",
+    "axios": "^1.6.7"
+  }
+}
