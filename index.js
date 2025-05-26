@@ -1,9 +1,8 @@
-// index.js
-import makeWASocket, { useSingleFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
-import { Boom } from '@hapi/boom';
+import pkg from '@whiskeysockets/baileys';
 import qrcode from 'qrcode-terminal';
 import fs from 'fs';
 
+const { default: makeWASocket, useSingleFileAuthState, DisconnectReason } = pkg;
 const { state, saveState } = useSingleFileAuthState('./auth_info.json');
 
 async function startBot() {
