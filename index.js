@@ -1,98 +1,106 @@
 // index.js
 import './config.js'
-import {
-  makeWASocket,
+import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
-  DisconnectReason,
+  DisconnectReason
 } from '@whiskeysockets/baileys'
-import { protoType, serialize } from './lib/simple.js'
-import pino from 'pino'
+import qrcode from 'qrcode-terminal'
 import chalk from 'chalk'
+import pino from 'pino'
 import fs from 'fs'
 import readline from 'readline'
 
-// Inicializa extensiones de baileys
+// Extiende Baileys
+import { protoType, serialize } from './lib/simple.js'
 protoType()
 serialize()
 
-// Helper para leer consola
+// Configura readline
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-const question = (text) => new Promise((resolve) => rl.question(text, resolve))
+const ask = (text) => new Promise(resolve => rl.question(text, resolve))
 
 async function start() {
-  // Prepara estado de autenticación
+  // Estado de autenticación
   const { state, saveCreds } = await useMultiFileAuthState('./sessions')
   const { version } = await fetchLatestBaileysVersion()
 
-  // Determina modo de conexión y número
-  let modeQR = true
+  // Selección de modo
+  const sessionExists = fs.existsSync('./sessions/creds.json')
+  let mode = '1'
   let phoneNumber
-  if (!fs.existsSync('./sessions/creds.json')) {
-    const opt = await question(
+  if (!sessionExists) {
+    mode = (await ask(
       chalk.magenta('Selecciona modo de conexión:\n1. QR\n2. Código de emparejamiento\n--> ')
-    )
-    modeQR = opt.trim() === '1'
-    if (!modeQR) {
-      const num = await question(
-        chalk.green('Ingresa tu número (ej: 573245451694): ')
-      )
-      phoneNumber = num.replace(/\D/g, '')
+    )).trim()
+
+    if (mode === '2') {
+      phoneNumber = (await ask(
+        chalk.green('Ingresa tu número completo (ej: 573245451694): ')
+      )).replace(/\D/g, '')
     }
   }
 
+  // Cierra readline (ya no se necesita)
   rl.close()
 
-  // Configuración de conexión
-  const conn = makeWASocket({
+  // Crea conexión
+  const sock = makeWASocket({
     version,
-    printQRInTerminal: modeQR,
     logger: pino({ level: 'silent' }),
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
     },
+    printQRInTerminal: false,
     markOnlineOnConnect: true,
   })
 
-  conn.ev.on('creds.update', saveCreds)
+  sock.ev.on('creds.update', saveCreds)
 
-  // Maneja actualizaciones de conexión
-  conn.ev.on('connection.update', async (update) => {
+  // Manejo de conexión
+  sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update
 
-    if (qr && modeQR) {
-      console.log(chalk.yellow('\nEscanea el código QR (vence en 45s)'))
+    // Modo QR
+    if (qr && mode === '1') {
+      console.log(chalk.yellow('\nEscanea este código QR (expira en 45s):'))
+      qrcode.generate(qr, { small: true })
     }
 
+    // Conexión abierta
     if (connection === 'open') {
-      console.log(chalk.green('\n✔ Conectado! Bot activo.'))
-      // Si modo código, solicita emparejamiento
-      if (!modeQR && phoneNumber) {
+      console.log(chalk.green('\n✔ Conectado!'))
+      // Modo código de emparejamiento
+      if (mode === '2' && phoneNumber) {
         try {
-          const raw = await conn.requestPairingCode(phoneNumber)
-          const code = raw.match(/.{1,4}/g).join('-')
-          console.log(chalk.bgMagenta.white(' Código de emparejamiento: '), chalk.white(code))
-        } catch (e) {
-          console.error('Error al solicitar código:', e)
+          const pairingRaw = await sock.requestPairingCode(phoneNumber)
+          const pairingCode = pairingRaw.match(/.{1,4}/g).join('-')
+          console.log(
+            chalk.bgMagenta.white(' Código de emparejamiento: '),
+            chalk.white(pairingCode)
+          )
+        } catch (err) {
+          console.error(chalk.red('Error generando código:'), err)
         }
       }
     }
 
+    // Reconexión automática
     if (connection === 'close') {
-      const status = lastDisconnect?.error?.output?.statusCode
-      if (status !== DisconnectReason.loggedOut) {
+      const code = lastDisconnect?.error?.output?.statusCode
+      if (code !== DisconnectReason.loggedOut) {
         console.log(chalk.red('Conexión cerrada. Reconectando...'))
-        start() // reintenta
+        start()
       } else {
         console.log(chalk.red('Sesión cerrada. Elimina sessions/creds.json y reinicia.'))
       }
     }
   })
 
-  // Manejo de mensajes: .chatgpt y .etiquetar
-  conn.ev.on('messages.upsert', async ({ messages }) => {
+  // Comandos
+  sock.ev.on('messages.upsert', async ({ messages }) => {
     const m = messages[0]
     if (!m.message || m.key.fromMe) return
 
@@ -103,13 +111,13 @@ async function start() {
     if (text.startsWith('.chatgpt')) {
       const prompt = text.slice(9).trim()
       const reply = await chatGPTResponse(prompt)
-      await conn.sendMessage(from, { text: reply }, { quoted: m })
+      await sock.sendMessage(from, { text: reply }, { quoted: m })
     }
 
     if (text.startsWith('.etiquetar') && isGroup) {
-      const { participants } = await conn.groupMetadata(from)
-      const mentions = participants.map((p) => p.id)
-      await conn.sendMessage(
+      const meta = await sock.groupMetadata(from)
+      const mentions = meta.participants.map(p => p.id)
+      await sock.sendMessage(
         from,
         { text: '🔖 Etiquetando a todos', mentions },
         { quoted: m }
@@ -118,9 +126,10 @@ async function start() {
   })
 }
 
-// Simulación de respuesta ChatGPT
+// Simula respuesta de ChatGPT
 async function chatGPTResponse(prompt) {
   return `🤖 Respuesta simulada a: "${prompt}"`
 }
 
-start().catch((err) => console.error(err))
+start().catch(err => console.error(err))
+      
