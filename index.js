@@ -1,26 +1,20 @@
-import { default as makeWASocket, DisconnectReason } from '@whiskeysockets/baileys'
-import { useSingleFileAuthState } from '@whiskeysockets/baileys/lib/auth.js'
+impoimport { makeWASocket, useSingleFileAuthState, DisconnectReason } from '@whiskeysockets/baileys'
 import qrcode from 'qrcode-terminal'
-import fs from 'fs'
 
-// Configuración de autenticación
 const { state, saveState } = useSingleFileAuthState('./auth_info.json')
 
-// Función para inicializar el bot
 async function startBot() {
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: false,
-        logger: { level: 'warn' },
-        browser: ['SatohakiBot', 'Chrome', '1.0.0']
+        printQRInTerminal: true,
+        logger: { level: 'warn' }
     })
 
-    // Manejador de eventos de conexión
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update
         
         if (qr) {
-            console.log('\n[!] Escanea el código QR con tu WhatsApp:')
+            console.log('\n[!] Escanea este código QR con WhatsApp:')
             qrcode.generate(qr, { small: true })
         }
 
@@ -34,13 +28,13 @@ async function startBot() {
         }
 
         if (connection === 'open') {
-            console.log('[+] Conexión exitosa con WhatsApp')
-            console.log('[!] Bot listo para recibir comandos')
+            console.log('[+] Bot conectado correctamente')
         }
     })
 
-    // Guardar credenciales
     sock.ev.on('creds.update', saveState)
+
+    // ... (resto de tu código de mensajes)
 
     // Manejador de mensajes
     sock.ev.on('messages.upsert', async ({ messages }) => {
