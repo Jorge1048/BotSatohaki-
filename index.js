@@ -1,62 +1,110 @@
-import pkg from '@whiskeysockets/baileys';
-import qrcode from 'qrcode-terminal';
-import fs from 'fs';
+import { default as makeWASocket, DisconnectReason } from '@whiskeysockets/baileys'
+import { useSingleFileAuthState } from '@whiskeysockets/baileys/lib/auth.js'
+import qrcode from 'qrcode-terminal'
+import fs from 'fs'
 
-const { default: makeWASocket, useSingleFileAuthState, DisconnectReason } = pkg;
-const { state, saveState } = useSingleFileAuthState('./auth_info.json');
+// Configuración de autenticación
+const { state, saveState } = useSingleFileAuthState('./auth_info.json')
 
+// Función para inicializar el bot
 async function startBot() {
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true,
-        logger: { level: 'silent' },
-    });
+        printQRInTerminal: false,
+        logger: { level: 'warn' },
+        browser: ['SatohakiBot', 'Chrome', '1.0.0']
+    })
 
+    // Manejador de eventos de conexión
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
+        const { connection, lastDisconnect, qr } = update
         
         if (qr) {
-            console.log('[!] Escanea este código QR:');
-            qrcode.generate(qr, { small: true });
+            console.log('\n[!] Escanea el código QR con tu WhatsApp:')
+            qrcode.generate(qr, { small: true })
         }
 
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('[!] Conexión cerrada. Reintentando...', shouldReconnect);
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
+            console.log(`[!] Conexión cerrada. ${shouldReconnect ? 'Reconectando...' : 'Elimina auth_info.json y reinicia'}`)
+            
             if (shouldReconnect) {
-                startBot();
+                setTimeout(startBot, 5000)
             }
         }
 
         if (connection === 'open') {
-            console.log('[!] Bot conectado exitosamente.');
+            console.log('[+] Conexión exitosa con WhatsApp')
+            console.log('[!] Bot listo para recibir comandos')
         }
-    });
+    })
 
-    sock.ev.on('creds.update', saveState);
+    // Guardar credenciales
+    sock.ev.on('creds.update', saveState)
 
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
-        const msg = messages[0];
-        if (!msg.message || msg.key.fromMe) return;
+    // Manejador de mensajes
+    sock.ev.on('messages.upsert', async ({ messages }) => {
+        try {
+            const msg = messages[0]
+            if (!msg.message || msg.key.fromMe) return
 
-        const body = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        const sender = msg.key.remoteJid;
+            const body = msg.message.conversation || 
+                        msg.message.extendedTextMessage?.text || 
+                        msg.message.imageMessage?.caption || ''
+            const sender = msg.key.remoteJid
+            const command = body.trim().split(/ +/).shift().toLowerCase()
 
-        if (body.startsWith('.chatgpt')) {
-            await sock.sendMessage(sender, { text: '¡Hola! Soy un bot funcional.' });
+            // Comandos disponibles
+            const commands = {
+                '.chatgpt': async () => {
+                    const text = body.slice(9).trim()
+                    if (!text) return await sock.sendMessage(sender, { 
+                        text: '⚠️ Escribe tu pregunta después de .chatgpt\nEjemplo: .chatgpt ¿Qué es el universo?' 
+                    })
+                    
+                    await sock.sendMessage(sender, { 
+                        text: `🤖 Respuesta para: *${text}*\n\n_Simulando respuesta de ChatGPT..._` 
+                    })
+                },
+
+                '.etiquetar': async () => {
+                    if (!msg.key.remoteJid.endsWith('@g.us')) {
+                        return await sock.sendMessage(sender, { 
+                            text: '⚠️ Este comando solo funciona en grupos' 
+                        })
+                    }
+
+                    const groupMetadata = await sock.groupMetadata(sender)
+                    const mentions = groupMetadata.participants.map(p => p.id)
+                    
+                    await sock.sendMessage(sender, { 
+                        text: '📢 ¡Atención a todos!',
+                        mentions
+                    })
+                },
+
+                '.help': async () => {
+                    await sock.sendMessage(sender, {
+                        text: `💡 *Lista de comandos:*\n\n` +
+                              `▸ .chatgpt [pregunta] - Consulta con IA\n` +
+                              `▸ .etiquetar - Menciona a todos\n` +
+                              `▸ .help - Muestra esta ayuda`
+                    })
+                }
+            }
+
+            if (commands[command]) {
+                await commands[command]()
+            }
+
+        } catch (error) {
+            console.error('[!] Error procesando mensaje:', error)
         }
-
-        if (body.startsWith('.etiquetar') && msg.message?.extendedTextMessage?.contextInfo?.participant) {
-            const group = msg.key.remoteJid;
-            const groupMetadata = await sock.groupMetadata(group);
-            const mentions = groupMetadata.participants.map(p => p.id);
-            await sock.sendMessage(group, {
-                text: 'Hola a todos!',
-                mentions
-            });
-        }
-    });
+    })
 }
 
-startBot();
+// Iniciar el bot con manejo de excepciones
+startBot().catch(err => {
+    console.error('[!] Error al iniciar el bot:', err)
+    process.exit(1)
+})
