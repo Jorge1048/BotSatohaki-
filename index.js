@@ -1,104 +1,40 @@
-impoimport { makeWASocket, useSingleFileAuthState, DisconnectReason } from '@whiskeysockets/baileys'
-import qrcode from 'qrcode-terminal'
+import './config.js';
+import { createRequire } from 'module';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { platform } from 'process';
+import * as ws from 'ws';
+import fs, { readdirSync, statSync, unlinkSync, existsSync, mkdirSync, readFileSync, rmSync, watch } from 'fs';
+import yargs from 'yargs';
+import { spawn } from 'child_process';
+import lodash from 'lodash';
+import chalk from 'chalk';
+import syntaxerror from 'syntax-error';
+import { tmpdir } from 'os';
+import { format } from 'util';
+import pino from 'pino';
+import path, { join, dirname } from 'path';
+import { Boom } from '@hapi/boom';
+import { makeWASocket, protoType, serialize } from './lib/simple.js';
+import { Low, JSONFile } from 'lowdb';
+import store from './lib/store.js';
+import { DisconnectReason, useMultiFileAuthState, MessageRetryMap, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, jidNormalizedUser, PHONENUMBER_MCC } from '@whiskeysockets/baileys';
 
-const { state, saveState } = useSingleFileAuthState('./auth_info.json')
+const { proto } = await import('@whiskeysockets/baileys');
+const { CONNECTING } = ws;
+const { chain } = lodash;
+const PORT = process.env.PORT || process.env.SERVER_PORT || 3000;
 
-async function startBot() {
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: true,
-        logger: { level: 'warn' }
-    })
+// Configuración inicial
+global.__filename = function filename(pathURL = import.meta.url, rmPrefix = platform !== 'win32') {
+  return rmPrefix ? /file:\/\/\//.test(pathURL) ? fileURLToPath(pathURL) : pathURL : pathToFileURL(pathURL).toString();
+}; 
 
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update
-        
-        if (qr) {
-            console.log('\n[!] Escanea este código QR con WhatsApp:')
-            qrcode.generate(qr, { small: true })
-        }
+global.__dirname = function dirname(pathURL) {
+  return path.dirname(global.__filename(pathURL, true));
+};
 
-        if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
-            console.log(`[!] Conexión cerrada. ${shouldReconnect ? 'Reconectando...' : 'Elimina auth_info.json y reinicia'}`)
-            
-            if (shouldReconnect) {
-                setTimeout(startBot, 5000)
-            }
-        }
+global.__require = function require(dir = import.meta.url) {
+  return createRequire(dir);
+};
 
-        if (connection === 'open') {
-            console.log('[+] Bot conectado correctamente')
-        }
-    })
-
-    sock.ev.on('creds.update', saveState)
-
-    // ... (resto de tu código de mensajes)
-
-    // Manejador de mensajes
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-        try {
-            const msg = messages[0]
-            if (!msg.message || msg.key.fromMe) return
-
-            const body = msg.message.conversation || 
-                        msg.message.extendedTextMessage?.text || 
-                        msg.message.imageMessage?.caption || ''
-            const sender = msg.key.remoteJid
-            const command = body.trim().split(/ +/).shift().toLowerCase()
-
-            // Comandos disponibles
-            const commands = {
-                '.chatgpt': async () => {
-                    const text = body.slice(9).trim()
-                    if (!text) return await sock.sendMessage(sender, { 
-                        text: '⚠️ Escribe tu pregunta después de .chatgpt\nEjemplo: .chatgpt ¿Qué es el universo?' 
-                    })
-                    
-                    await sock.sendMessage(sender, { 
-                        text: `🤖 Respuesta para: *${text}*\n\n_Simulando respuesta de ChatGPT..._` 
-                    })
-                },
-
-                '.etiquetar': async () => {
-                    if (!msg.key.remoteJid.endsWith('@g.us')) {
-                        return await sock.sendMessage(sender, { 
-                            text: '⚠️ Este comando solo funciona en grupos' 
-                        })
-                    }
-
-                    const groupMetadata = await sock.groupMetadata(sender)
-                    const mentions = groupMetadata.participants.map(p => p.id)
-                    
-                    await sock.sendMessage(sender, { 
-                        text: '📢 ¡Atención a todos!',
-                        mentions
-                    })
-                },
-
-                '.help': async () => {
-                    await sock.sendMessage(sender, {
-                        text: `💡 *Lista de comandos:*\n\n` +
-                              `▸ .chatgpt [pregunta] - Consulta con IA\n` +
-                              `▸ .etiquetar - Menciona a todos\n` +
-                              `▸ .help - Muestra esta ayuda`
-                    })
-                }
-            }
-
-            if (commands[command]) {
-                await commands[command]()
-            }
-
-        } catch (error) {
-            console.error('[!] Error procesando mensaje:', error)
-        }
-    })
-}
-
-// Iniciar el bot con manejo de excepciones
-startBot().catch(err => {
-    console.error('[!] Error al iniciar el bot:', err)
-    process.exit(1)
-})
+// Resto de tu configuración global...
