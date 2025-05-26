@@ -1,21 +1,37 @@
-// index.js (modificado para .chatgpt y .etiquetar) process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '1' import './config.js' import { makeWASocket, protoType, serialize } from './lib/simple.js' import { useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, jidNormalizedUser } from '@whiskeysockets/baileys' import pino from 'pino' import chalk from 'chalk' import fs from 'fs' import readline from 'readline'
+// index.js (para .chatgpt y .etiquetar) 
+process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '1' 
+import './config.js' 
+import { makeWASocket, protoType, serialize } from './lib/simple.js' 
+import { useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, jidNormalizedUser } from '@whiskeysockets/baileys' 
+import pino from 'pino' 
+import chalk from 'chalk' 
+import fs from 'fs' 
+import readline from 'readline'
 
-protoType() serialize()
+protoType() 
+serialize()
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout }) const question = (text) => new Promise((res) => rl.question(text, res))
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout }) 
+const question = (text) => new Promise((res) => rl.question(text, res))
 
-const { state, saveCreds } = await useMultiFileAuthState('./sessions') const { version } = await fetchLatestBaileysVersion()
+const { state, saveCreds } = await useMultiFileAuthState('./sessions') 
+const { version } = await fetchLatestBaileysVersion()
 
-let opcion = '1' if (!fs.existsSync('./sessions/creds.json')) { opcion = await question(chalk.magenta('Selecciona modo de conexión:
+let opcion = '1' 
+if (!fs.existsSync('./sessions/creds.json')) { opcion = await question(chalk.magenta('Selecciona modo de conexión:
 
 1. Código QR
-
-
 2. Código de emparejamiento --> ')) rl.close() }
 
 
 
-const connectionOptions = { version, printQRInTerminal: opcion === '1', logger: pino({ level: 'silent' }), auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })) }, markOnlineOnConnect: true, browser: ['NagiBot', 'Chrome', '1.0'] }
+const connectionOptions = 
+{ version, 
+printQRInTerminal: opcion === '1', 
+logger: pino({ level: 'silent' }), 
+auth: { 
+  creds: state.creds, 
+  keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })) }, markOnlineOnConnect: true, browser: ['NagiBot', 'Chrome', '1.0'] }
 
 const conn = makeWASocket(connectionOptions) conn.ev.on('creds.update', saveCreds)
 
