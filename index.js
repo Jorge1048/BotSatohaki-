@@ -1,6 +1,12 @@
 // index.js
 import './config.js'
-import { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys'
+import {
+  makeWASocket,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
+  DisconnectReason,
+} from '@whiskeysockets/baileys'
 import { protoType, serialize } from './lib/simple.js'
 import pino from 'pino'
 import chalk from 'chalk'
@@ -11,82 +17,110 @@ import readline from 'readline'
 protoType()
 serialize()
 
-// Crea interfaz de lectura de consola
+// Helper para leer consola
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-const question = (prompt) => new Promise((resolve) => rl.question(prompt, resolve))
+const question = (text) => new Promise((resolve) => rl.question(text, resolve))
 
-async function startBot() {
-  // Autenticación multi-archivo
+async function start() {
+  // Prepara estado de autenticación
   const { state, saveCreds } = await useMultiFileAuthState('./sessions')
   const { version } = await fetchLatestBaileysVersion()
 
-  // Solicita número si no existe sesión previa
+  // Determina modo de conexión y número
+  let modeQR = true
   let phoneNumber
   if (!fs.existsSync('./sessions/creds.json')) {
-    phoneNumber = await question(
-      chalk.green('✏  Ingresa tu número de WhatsApp (ej: 573245451694): ')
+    const opt = await question(
+      chalk.magenta('Selecciona modo de conexión:\n1. QR\n2. Código de emparejamiento\n--> ')
     )
-    phoneNumber = phoneNumber.replace(/\D/g, '')
+    modeQR = opt.trim() === '1'
+    if (!modeQR) {
+      const num = await question(
+        chalk.green('Ingresa tu número (ej: 573245451694): ')
+      )
+      phoneNumber = num.replace(/\D/g, '')
+    }
   }
 
-  // Cierra lectura de consola
   rl.close()
 
-  // Construye opciones de conexión
-  const options = {
+  // Configuración de conexión
+  const conn = makeWASocket({
     version,
+    printQRInTerminal: modeQR,
     logger: pino({ level: 'silent' }),
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
     },
-    printQRInTerminal: !phoneNumber,
     markOnlineOnConnect: true,
-  }
+  })
 
-  // Crea y configura la conexión
-  const conn = makeWASocket(options)
   conn.ev.on('creds.update', saveCreds)
 
-  // Si ingresó número, solicita y muestra el código de emparejamiento
-  if (phoneNumber) {
-    const rawCode = await conn.requestPairingCode(phoneNumber)
-    const pairingCode = rawCode?.match(/.{1,4}/g)?.join('-') || rawCode
-    console.log(
-      chalk.bgMagenta.white('✧ CÓDIGO DE VINCULACIÓN ✧'),
-      chalk.white(pairingCode)
-    )
-  }
+  // Maneja actualizaciones de conexión
+  conn.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update
 
-  // Manejo de mensajes: solo .chatgpt y .etiquetar
+    if (qr && modeQR) {
+      console.log(chalk.yellow('\nEscanea el código QR (vence en 45s)'))
+    }
+
+    if (connection === 'open') {
+      console.log(chalk.green('\n✔ Conectado! Bot activo.'))
+      // Si modo código, solicita emparejamiento
+      if (!modeQR && phoneNumber) {
+        try {
+          const raw = await conn.requestPairingCode(phoneNumber)
+          const code = raw.match(/.{1,4}/g).join('-')
+          console.log(chalk.bgMagenta.white(' Código de emparejamiento: '), chalk.white(code))
+        } catch (e) {
+          console.error('Error al solicitar código:', e)
+        }
+      }
+    }
+
+    if (connection === 'close') {
+      const status = lastDisconnect?.error?.output?.statusCode
+      if (status !== DisconnectReason.loggedOut) {
+        console.log(chalk.red('Conexión cerrada. Reconectando...'))
+        start() // reintenta
+      } else {
+        console.log(chalk.red('Sesión cerrada. Elimina sessions/creds.json y reinicia.'))
+      }
+    }
+  })
+
+  // Manejo de mensajes: .chatgpt y .etiquetar
   conn.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0]
-    if (!msg.message || msg.key.fromMe) return
+    const m = messages[0]
+    if (!m.message || m.key.fromMe) return
 
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text || ''
-    const from = msg.key.remoteJid
+    const text = m.message.conversation || m.message.extendedTextMessage?.text || ''
+    const from = m.key.remoteJid
     const isGroup = from.endsWith('@g.us')
 
     if (text.startsWith('.chatgpt')) {
       const prompt = text.slice(9).trim()
       const reply = await chatGPTResponse(prompt)
-      await conn.sendMessage(from, { text: reply }, { quoted: msg })
+      await conn.sendMessage(from, { text: reply }, { quoted: m })
     }
 
     if (text.startsWith('.etiquetar') && isGroup) {
-      const metadata = await conn.groupMetadata(from)
-      const mentions = metadata.participants.map(p => p.id)
-      await conn.sendMessage(from, { text: '🔖 Etiquetando a todos:', mentions }, { quoted: msg })
+      const { participants } = await conn.groupMetadata(from)
+      const mentions = participants.map((p) => p.id)
+      await conn.sendMessage(
+        from,
+        { text: '🔖 Etiquetando a todos', mentions },
+        { quoted: m }
+      )
     }
   })
-
-  console.log(chalk.green('✅ Bot iniciado. Esperando mensajes...'))
 }
 
-// Función simulada de ChatGPT (reemplaza con tu integración)
+// Simulación de respuesta ChatGPT
 async function chatGPTResponse(prompt) {
   return `🤖 Respuesta simulada a: "${prompt}"`
 }
 
-// Inicia el bot
-startBot().catch(console.error)
+start().catch((err) => console.error(err))
