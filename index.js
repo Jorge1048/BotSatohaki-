@@ -1,71 +1,30 @@
-// index.js
-process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '1'
-import './config.js'
-import {setupMaster, fork} from 'cluster'
-import {watchFile, unwatchFile, readdirSync, existsSync, mkdirSync, unlinkSync} from 'fs'
-import cfonts from 'cfonts'
-import {createRequire} from 'module'
-import {fileURLToPath, pathToFileURL} from 'url'
-import {platform} from 'process'
-import * as ws from 'ws'
-import yargs from 'yargs'
-import {spawn} from 'child_process'
-import lodash from 'lodash'
-import chalk from 'chalk'
-import syntaxerror from 'syntax-error'
-import {format} from 'util'
-import {makeWASocket, protoType, serialize} from './lib/simple.js'
-import {useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, jidNormalizedUser} from '@whiskeysockets/baileys'
-import readline from 'readline'
-import NodeCache from 'node-cache'
-import {Low, JSONFile} from 'lowdb'
-import store from './lib/store.js'
+// index.js (modificado para .chatgpt y .etiquetar) process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '1' import './config.js' import { makeWASocket, protoType, serialize } from './lib/simple.js' import { useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, jidNormalizedUser } from '@whiskeysockets/baileys' import pino from 'pino' import chalk from 'chalk' import fs from 'fs' import readline from 'readline'
 
-// ——— Todo el bloque de inicialización (QR, multi-device, conexiones, handlers, clean-up, etc.) queda exactamente igual que antes. ———
+protoType() serialize()
 
-protoType()
-serialize()
-// … [mantén aquí TODO tu código de arranque ORIGINAL sin cambios] …
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout }) const question = (text) => new Promise((res) => rl.question(text, res))
 
-// Después de tu `global.conn = makeWASocket(connectionOptions)` y `await global.reloadHandler()`:
+const { state, saveCreds } = await useMultiFileAuthState('./sessions') const { version } = await fetchLatestBaileysVersion()
 
-// ——— Nuevo manejador de mensajes ———
-conn.ev.off('messages.upsert', conn.handler) // deshabilita el handler genérico si existía
+let opcion = '1' if (!fs.existsSync('./sessions/creds.json')) { opcion = await question(chalk.magenta('Selecciona modo de conexión:
 
-conn.ev.on('messages.upsert', async ({ messages }) => {
-  const m = messages[0]
-  if (!m.message || m.key.fromMe) return
-  const text = m.message.conversation 
-            || m.message.extendedTextMessage?.text 
-            || ''
-  const from = m.key.remoteJid
-  const isGroup = from.endsWith('@g.us')
+1. Código QR
 
-  // .chatgpt <prompt>
-  if (text.startsWith('.chatgpt')) {
-    const prompt = text.slice(9).trim()
-    const reply = await chatGPTResponse(prompt)
-    await conn.sendMessage(from, { text: reply }, { quoted: m })
-  }
 
-  // .etiquetar
-  else if (text.startsWith('.etiquetar')) {
-    if (!isGroup) {
-      return await conn.sendMessage(from, { text: '🔖 Este comando solo funciona en grupos.' }, { quoted: m })
-    }
-    const metadata = await conn.groupMetadata(from)
-    const mentions = metadata.participants.map(u => u.id)
-    await conn.sendMessage(from, { 
-      text: `🔖 Etiquetando a todos:`, 
-      mentions 
-    }, { quoted: m })
-  }
-})
+2. Código de emparejamiento --> ')) rl.close() }
 
-// Función de ejemplo para ChatGPT (reemplaza con tu implementación real)
-async function chatGPTResponse(prompt) {
-  // Aquí iría la llamada a tu API de OpenAI, p.ej. usando fetch o el SDK oficial
-  return `🤖 Respuesta de ChatGPT para: "${prompt}"`
-}
 
-// ——— Fin de index.js ———
+
+const connectionOptions = { version, printQRInTerminal: opcion === '1', logger: pino({ level: 'silent' }), auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })) }, markOnlineOnConnect: true, browser: ['NagiBot', 'Chrome', '1.0'] }
+
+const conn = makeWASocket(connectionOptions) conn.ev.on('creds.update', saveCreds)
+
+conn.ev.on('messages.upsert', async ({ messages }) => { const m = messages[0] if (!m.message || m.key.fromMe) return
+
+const text = m.message.conversation || m.message.extendedTextMessage?.text || '' const from = m.key.remoteJid const isGroup = from.endsWith('@g.us')
+
+if (text.startsWith('.chatgpt')) { const prompt = text.slice(9).trim() const reply = await chatGPTResponse(prompt) await conn.sendMessage(from, { text: reply }, { quoted: m }) } else if (text.startsWith('.etiquetar') && isGroup) { const metadata = await conn.groupMetadata(from) const mentions = metadata.participants.map(p => p.id) await conn.sendMessage(from, { text: '🔖 Etiquetando a todos:', mentions }, { quoted: m }) } })
+
+async function chatGPTResponse(prompt) { return 🤖 Respuesta a: "${prompt}" // Simulación, integra tu API real aquí }
+
+                                                               
