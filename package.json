@@ -1,14 +1,21 @@
+// package.json
 {
-  "name": "BotSatohaki",
+  "name": "nagi-bot",
   "version": "1.0.0",
-  "description": "Bot simple de WhatsApp con comandos básicos",
-  "main": "index.js",
+  "description": "Bot de WhatsApp con solo comandos .chatgpt y .etiquetar",
   "type": "module",
+  "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.5.0",
-    "axios": "^1.6.7"
+    "@whiskeysockets/baileys": "^4.0.7",
+    "cfonts": "^3.0.0",
+    "chalk": "^4.1.0",
+    "lodash": "^4.17.21",
+    "pino": "^7.0.0",
+    "ws": "^8.12.0",
+    "yargs": "^17.7.2",
+    "lowdb": "^3.0.0"
   }
 }
