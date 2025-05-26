@@ -1,12 +1,7 @@
 // index.js
 import './config.js'
-import pkg from '@whiskeysockets/baileys'
-const { makeWASocket, protoType, serialize } = pkg
-import {
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore,
-} from '@whiskeysockets/baileys'
+import { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys'
+import { protoType, serialize } from './lib/simple.js'
 import pino from 'pino'
 import chalk from 'chalk'
 import fs from 'fs'
@@ -16,16 +11,16 @@ import readline from 'readline'
 protoType()
 serialize()
 
-// Crea interfaz de lectura de consola\const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+// Crea interfaz de lectura de consola
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 const question = (prompt) => new Promise((resolve) => rl.question(prompt, resolve))
 
-// Función principal
 async function startBot() {
   // Autenticación multi-archivo
   const { state, saveCreds } = await useMultiFileAuthState('./sessions')
   const { version } = await fetchLatestBaileysVersion()
 
-  // Pide número si no existe sesión previa
+  // Solicita número si no existe sesión previa
   let phoneNumber
   if (!fs.existsSync('./sessions/creds.json')) {
     phoneNumber = await question(
@@ -37,8 +32,8 @@ async function startBot() {
   // Cierra lectura de consola
   rl.close()
 
-  // Opciones de conexión
-  const conn = makeWASocket({
+  // Construye opciones de conexión
+  const options = {
     version,
     logger: pino({ level: 'silent' }),
     auth: {
@@ -47,10 +42,13 @@ async function startBot() {
     },
     printQRInTerminal: !phoneNumber,
     markOnlineOnConnect: true,
-  })
+  }
+
+  // Crea y configura la conexión
+  const conn = makeWASocket(options)
   conn.ev.on('creds.update', saveCreds)
 
-  // Si se ingresó número, solicita y muestra el código
+  // Si ingresó número, solicita y muestra el código de emparejamiento
   if (phoneNumber) {
     const rawCode = await conn.requestPairingCode(phoneNumber)
     const pairingCode = rawCode?.match(/.{1,4}/g)?.join('-') || rawCode
@@ -65,10 +63,7 @@ async function startBot() {
     const msg = messages[0]
     if (!msg.message || msg.key.fromMe) return
 
-    const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      ''
+    const text = msg.message.conversation || msg.message.extendedTextMessage?.text || ''
     const from = msg.key.remoteJid
     const isGroup = from.endsWith('@g.us')
 
@@ -79,23 +74,19 @@ async function startBot() {
     }
 
     if (text.startsWith('.etiquetar') && isGroup) {
-      const meta = await conn.groupMetadata(from)
-      const mentions = meta.participants.map((p) => p.id)
-      await conn.sendMessage(
-        from,
-        { text: '🔖 Etiquetando a todos:', mentions },
-        { quoted: msg }
-      )
+      const metadata = await conn.groupMetadata(from)
+      const mentions = metadata.participants.map(p => p.id)
+      await conn.sendMessage(from, { text: '🔖 Etiquetando a todos:', mentions }, { quoted: msg })
     }
   })
 
   console.log(chalk.green('✅ Bot iniciado. Esperando mensajes...'))
 }
 
-// Función de simulación de ChatGPT (reemplaza con tu integración)
+// Función simulada de ChatGPT (reemplaza con tu integración)
 async function chatGPTResponse(prompt) {
   return `🤖 Respuesta simulada a: "${prompt}"`
 }
 
-// Arranca el bot
+// Inicia el bot
 startBot().catch(console.error)
