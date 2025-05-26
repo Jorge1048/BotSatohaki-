@@ -1,17 +1,27 @@
 {
   "name": "satohaki-bot",
   "version": "1.0.0",
-  "description": "Bot de WhatsApp con comandos .chatgpt y .etiquetar",
+  "description": "Bot de WhatsApp con múltiples funciones",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Jorge1048",
   "license": "MIT",
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.4.0",
+    "@hapi/boom": "^10.0.0",
+    "@whiskeysockets/baileys": "^6.7.0",
+    "boxen": "^7.1.1",
+    "cfonts": "^3.1.1",
+    "chalk": "^5.3.0",
+    "child_process": "^1.0.2",
+    "lowdb": "^5.1.0",
+    "node-cache": "^5.1.2",
+    "pino": "^8.15.1",
     "qrcode-terminal": "^0.12.0",
-    "@hapi/boom": "^10.0.0"
+    "syntax-error": "^1.4.0",
+    "yargs": "^17.7.2"
   }
 }
