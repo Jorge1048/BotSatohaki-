@@ -28,7 +28,8 @@ cd /sdcard
 4 - Clona el repositorio.
 
 ```sh
-git clone https://github.com/guiireal/takeshi-bot.git
+git clone
+https://github.com/Jorge1048/BotSatohaki-.git
 ```
 
 5 - Entra en la carpeta que se clonó.
