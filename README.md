@@ -1,3 +1,7 @@
+> **Este proyecto está basado en [Takeshi Bot](https://github.com/guiireal/takeshi-bot), desarrollado por [Guilherme França (Dev Gui)](https://github.com/guiireal).**  
+> **Distribuido bajo la licencia [GNU GPL v3](https://www.gnu.org/licenses/gpl-3.0.html).**  
+> **Este repositorio contiene modificaciones realizadas por [Tu Nombre o Alias].**
+
 ## Sobre este proyecto
 
 Este proyecto no tiene ninguna vinculación oficial con WhatsApp. Fue desarrollado de forma independiente para interacciones automatizadas mediante la plataforma.
